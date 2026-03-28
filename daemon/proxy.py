@@ -9,7 +9,10 @@ from socketserver import ThreadingMixIn
 from urllib.request import Request, urlopen
 from urllib.error import URLError
 
-from logger import AFPLogger, AFPEvent
+try:
+    from daemon.logger import AFPLogger, AFPEvent
+except ImportError:
+    from logger import AFPLogger, AFPEvent
 
 
 class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):

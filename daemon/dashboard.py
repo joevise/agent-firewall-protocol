@@ -8,7 +8,10 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from socketserver import ThreadingMixIn
 from dataclasses import asdict
 
-from logger import AFPLogger
+try:
+    from daemon.logger import AFPLogger
+except ImportError:
+    from logger import AFPLogger
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 

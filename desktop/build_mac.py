@@ -13,21 +13,34 @@ def build():
     here = os.path.dirname(os.path.abspath(__file__))
     root = os.path.dirname(here)
 
+    daemon_dir = os.path.join(root, 'daemon')
+    sdk_dir = os.path.join(root, 'sdk', 'python', 'src')
+
     args = [
         os.path.join(here, 'app.py'),
         '--name=AFP',
         '--onefile',
         '--windowed',
-        f'--add-data={os.path.join(root, "sdk", "python", "src", "afp")}:afp',
-        f'--add-data={os.path.join(root, "daemon")}:daemon',
-        f'--add-data={os.path.join(here, "tray.py")}:.',
-        f'--add-data={os.path.join(here, "agent_scanner.py")}:.',
-        f'--add-data={os.path.join(here, "proxy_manager.py")}:.',
-        f'--add-data={os.path.join(here, "config.py")}:.',
+        # Add source directories to Python path so PyInstaller collects them as modules
+        f'--paths={daemon_dir}',
+        f'--paths={sdk_dir}',
+        f'--paths={here}',
+        # Data files
+        f'--add-data={os.path.join(daemon_dir, "static")}:daemon/static',
+        # Hidden imports — daemon modules use bare imports (from logger import ...)
+        '--hidden-import=daemon',
+        '--hidden-import=daemon.proxy',
+        '--hidden-import=daemon.dashboard',
+        '--hidden-import=daemon.logger',
+        '--hidden-import=logger',
         '--hidden-import=pystray',
         '--hidden-import=PIL',
         '--hidden-import=yaml',
         '--hidden-import=pystray._darwin',
+        '--hidden-import=config',
+        '--hidden-import=agent_scanner',
+        '--hidden-import=proxy_manager',
+        '--hidden-import=tray',
         '--collect-all=pystray',
         '--collect-all=yaml',
         '--osx-bundle-identifier=com.agentfirewall.afp',
