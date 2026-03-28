@@ -1,0 +1,117 @@
+# AFP Core Rules
+# These rules are always active and provide baseline protection
+
+# Rule 1: Block credential exfiltration
+---
+version: "1.0"
+rule:
+  id: "afp-core-001"
+  name: "block-credential-exfiltration"
+  description: "Prevent sending API keys, passwords, or tokens to unauthorized external services"
+  category: "data-flow"
+  severity: "critical"
+  trigger:
+    action_type: ["http_request", "message_send"]
+  conditions:
+    all:
+      - content_matches: "(api[_-]?key|secret[_-]?key|password|bearer\\s+[a-zA-Z0-9]|sk-[a-zA-Z0-9]{20,}|ghp_[a-zA-Z0-9]{36}|token[\"']?\\s*[:=])"
+      - destination_not_in: "@allowed_domains"
+  action: block
+  message: "AFP blocked: Detected credential pattern in outbound request"
+  metadata:
+    author: "afp-core-team"
+    created: "2026-03-28"
+
+# Rule 2: Prevent destructive file operations
+---
+version: "1.0"
+rule:
+  id: "afp-core-002"
+  name: "block-destructive-file-ops"
+  description: "Block mass file deletion or writing to system directories"
+  category: "tool-access"
+  severity: "critical"
+  trigger:
+    action_type: ["file_delete", "shell_command"]
+  conditions:
+    any:
+      - command_matches: "rm\\s+(-rf?|--recursive)\\s+(/|~|\\$HOME)"
+      - command_matches: "rmdir\\s+(/|~)"
+      - path_matches: "^/(etc|usr|bin|sbin|boot|sys|proc)/"
+      - file_count_exceeds: 20
+  action: require_confirmation
+  message: "AFP alert: Destructive file operation detected. Confirm to proceed."
+  metadata:
+    author: "afp-core-team"
+    created: "2026-03-28"
+
+# Rule 3: Rate limit external requests
+---
+version: "1.0"
+rule:
+  id: "afp-core-003"
+  name: "rate-limit-external-requests"
+  description: "Limit outbound HTTP requests to prevent abuse or data exfiltration"
+  category: "rate-limit"
+  severity: "medium"
+  trigger:
+    action_type: ["http_request"]
+  conditions:
+    all:
+      - destination_not_in: "@allowed_domains"
+      - request_count_in_window:
+          count: 10
+          window_seconds: 60
+  action: block
+  message: "AFP blocked: Too many external requests in short time window"
+  metadata:
+    author: "afp-core-team"
+    created: "2026-03-28"
+
+# Rule 4: Block unauthorized code execution
+---
+version: "1.0"
+rule:
+  id: "afp-core-004"
+  name: "block-dangerous-code-execution"
+  description: "Prevent execution of code that modifies system configuration or installs packages"
+  category: "tool-access"
+  severity: "high"
+  trigger:
+    action_type: ["shell_command", "code_execute"]
+  conditions:
+    any:
+      - command_matches: "(curl|wget).*\\|\\s*(bash|sh|python)"
+      - command_matches: "pip\\s+install.*--user.*-e\\s+git"
+      - command_matches: "npm\\s+install\\s+-g"
+      - command_matches: "(chmod|chown).*\\s+/"
+      - command_matches: "crontab"
+  action: require_confirmation
+  message: "AFP alert: Potentially dangerous system modification detected"
+  metadata:
+    author: "afp-core-team"
+    created: "2026-03-28"
+
+# Rule 5: Detect prompt injection patterns
+---
+version: "1.0"
+rule:
+  id: "afp-core-005"
+  name: "detect-prompt-injection-in-data"
+  description: "Flag external data containing instruction-like patterns"
+  category: "content-filter"
+  severity: "high"
+  trigger:
+    action_type: ["http_request", "file_read"]
+  conditions:
+    response_content_matches:
+      any:
+        - "ignore (all |any )?(previous |prior |above )?(instructions|prompts|rules)"
+        - "you are now|you must now|your new (role|instruction|task)"
+        - "system:\\s*(override|reset|new instruction)"
+        - "\\[INST\\]|\\[/INST\\]|<\\|im_start\\|>"
+  action: alert
+  message: "AFP warning: Possible prompt injection detected in external content"
+  metadata:
+    author: "afp-core-team"
+    created: "2026-03-28"

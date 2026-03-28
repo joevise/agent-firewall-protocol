@@ -1,0 +1,42 @@
+# AFP Rule Schema v1.0
+# All rules must follow this structure
+
+version: "1.0"
+
+rule_schema:
+  required_fields:
+    - id          # Unique identifier (format: afp-{category}-{number})
+    - name        # Human-readable name
+    - description # What this rule does
+    - category    # One of: data-flow, tool-access, rate-limit, content-filter, anomaly
+    - severity    # One of: low, medium, high, critical
+    - trigger     # What action triggers this rule
+    - conditions  # When to apply the rule
+    - action      # What to do: allow, block, alert, require_confirmation
+
+  optional_fields:
+    - message     # User-facing message when rule triggers
+    - metadata    # Author, date, references
+    - exceptions  # Conditions where rule does NOT apply
+
+  action_types:
+    - allow                # Explicitly allow (overrides lower-priority blocks)
+    - block                # Prevent the action
+    - alert                # Allow but send alert
+    - require_confirmation # Pause and ask user for confirmation
+
+  trigger_action_types:
+    - tool_call       # Any tool invocation
+    - http_request    # Outbound HTTP request
+    - file_read       # File system read
+    - file_write      # File system write
+    - file_delete     # File system delete
+    - message_send    # Sending a message
+    - code_execute    # Code execution
+    - shell_command   # Shell command execution
+
+  severity_levels:
+    critical: "Immediate security threat, always block"
+    high: "Significant risk, block by default"
+    medium: "Potential risk, alert by default"
+    low: "Minor concern, log only"
