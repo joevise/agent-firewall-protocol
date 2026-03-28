@@ -7,9 +7,11 @@ AI agents, and provides a dashboard for monitoring and rule management.
 import logging
 import os
 import signal
+import socket
 import sys
 import threading
 import time
+import webbrowser
 
 # Add project root to path so we can import daemon and SDK
 # Handle both development mode and PyInstaller bundle
@@ -53,8 +55,8 @@ class AFPDesktopApp:
         self.proxy_manager = ProxyManager(proxy_port=self.config.proxy_port)
         self.tray = AFPTray(self)
 
-        self._proxy_thread: threading.Thread | None = None
-        self._dashboard_thread: threading.Thread | None = None
+        self._proxy_server = None
+        self._dashboard_server = None
         self._scanner_thread: threading.Thread | None = None
         self._stop_event = threading.Event()
 
@@ -74,53 +76,53 @@ class AFPDesktopApp:
 
     # ── Proxy server ──
 
-    def _run_proxy(self):
+    def _start_proxy(self):
+        """Start the proxy server and block until it's actually listening."""
         try:
             import daemon.proxy as proxy_mod
             from daemon.logger import AFPLogger as DaemonLogger
-            # Wire up firewall and logger to daemon proxy module
             proxy_mod.firewall = self.firewall
             proxy_mod.logger = DaemonLogger(max_events=1000)
             self._daemon_logger = proxy_mod.logger
             logger.info('Starting AFP proxy on port %d', self.config.proxy_port)
+            self._proxy_server = proxy_mod.start_proxy(port=self.config.proxy_port)
+            # Verify it's actually listening
+            self._wait_for_port(self.config.proxy_port, timeout=5)
             self.proxy_running = True
-            proxy_mod.start_proxy(port=self.config.proxy_port)
-        except ImportError as e:
-            logger.warning('daemon.proxy not available — running stub proxy: %s', e)
-            self.proxy_running = True
-            self._stop_event.wait()  # Block until stop
+            logger.info('AFP proxy is listening on port %d', self.config.proxy_port)
         except Exception as e:
-            logger.error('Proxy failed: %s', e)
-        finally:
+            logger.error('Proxy failed to start: %s', e)
             self.proxy_running = False
+            raise
 
-    def _start_proxy(self):
-        self._proxy_thread = threading.Thread(target=self._run_proxy, daemon=True, name='afp-proxy')
-        self._proxy_thread.start()
+    @staticmethod
+    def _wait_for_port(port: int, host: str = '127.0.0.1', timeout: float = 5):
+        """Wait until a port is accepting connections."""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            try:
+                with socket.create_connection((host, port), timeout=0.5):
+                    return
+            except OSError:
+                time.sleep(0.1)
+        raise RuntimeError(f'Port {port} not listening after {timeout}s')
 
     # ── Dashboard server ──
 
-    def _run_dashboard(self):
+    def _start_dashboard(self):
+        """Start dashboard server and block until it's listening."""
         try:
             import daemon.dashboard as dash_mod
-            # Wire up firewall and logger to daemon dashboard module
             dash_mod.firewall = self.firewall
             dash_mod.logger = getattr(self, '_daemon_logger', None)
             logger.info('Starting AFP dashboard on port %d', self.config.dashboard_port)
+            self._dashboard_server = dash_mod.start_dashboard(port=self.config.dashboard_port)
+            self._wait_for_port(self.config.dashboard_port, timeout=5)
             self.dashboard_running = True
-            dash_mod.start_dashboard(port=self.config.dashboard_port)
-        except ImportError as e:
-            logger.warning('daemon.dashboard not available — dashboard disabled: %s', e)
-            self.dashboard_running = True
-            self._stop_event.wait()
+            logger.info('AFP dashboard is listening on port %d', self.config.dashboard_port)
         except Exception as e:
-            logger.error('Dashboard failed: %s', e)
-        finally:
+            logger.error('Dashboard failed to start: %s', e)
             self.dashboard_running = False
-
-    def _start_dashboard(self):
-        self._dashboard_thread = threading.Thread(target=self._run_dashboard, daemon=True, name='afp-dashboard')
-        self._dashboard_thread.start()
 
     # ── Agent scanner ──
 
@@ -151,24 +153,35 @@ class AFPDesktopApp:
         logger.info('Detected %d agent(s): %s', len(self.agents_detected),
                      ', '.join(a['name'] for a in self.agents_detected) or 'none')
 
-        # 3. Start proxy
+        # 3. Start proxy FIRST and verify it's listening
         if self.config.auto_start_proxy:
-            self._start_proxy()
+            try:
+                self._start_proxy()
+            except Exception as e:
+                logger.error('Proxy failed to start — will NOT set system proxy: %s', e)
+                self.config.auto_set_system_proxy = False
 
         # 4. Start dashboard
         self._start_dashboard()
 
-        # 5. Configure system proxy
-        if self.config.auto_set_system_proxy:
+        # 5. Configure system proxy ONLY if proxy is confirmed running
+        if self.config.auto_set_system_proxy and self.proxy_running:
             try:
                 self.proxy_manager.enable()
             except Exception as e:
                 logger.warning('Could not set system proxy: %s', e)
 
-        # 6. Start periodic scanner
+        # 6. Auto-open dashboard in browser
+        if self.dashboard_running:
+            try:
+                webbrowser.open(f'http://localhost:{self.config.dashboard_port}')
+            except Exception:
+                pass
+
+        # 7. Start periodic scanner
         self._start_scanner()
 
-        # 7. Run tray (blocking — runs in main thread)
+        # 8. Run tray (blocking — runs in main thread)
         logger.info('AFP Desktop ready')
         try:
             self.tray.run()
