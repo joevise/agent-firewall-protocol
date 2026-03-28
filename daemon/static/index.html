@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AFP Dashboard</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0d1117;color:#c9d1d9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:20px}
+.header{display:flex;align-items:center;gap:12px;margin-bottom:24px}
+.header h1{font-size:24px;color:#58a6ff}
+.status{width:10px;height:10px;border-radius:50%;background:#3fb950;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:24px}
+.stat{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:16px;text-align:center}
+.stat .num{font-size:28px;font-weight:700;color:#58a6ff}
+.stat .label{font-size:12px;color:#8b949e;margin-top:4px}
+.stat.blocked .num{color:#f85149}
+.stat.allowed .num{color:#3fb950}
+h2{font-size:16px;color:#8b949e;margin-bottom:12px;text-transform:uppercase;letter-spacing:1px}
+table{width:100%;border-collapse:collapse;background:#161b22;border:1px solid #30363d;border-radius:8px;overflow:hidden;margin-bottom:32px}
+th{background:#21262d;text-align:left;padding:10px 12px;font-size:12px;color:#8b949e;text-transform:uppercase}
+td{padding:8px 12px;border-top:1px solid #21262d;font-size:13px;word-break:break-all}
+tr:hover{background:#1c2128}
+.ok{color:#3fb950}.blocked{color:#f85149}.warn{color:#d29922}
+.rule-card{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:14px;margin-bottom:8px}
+.rule-card .name{color:#58a6ff;font-weight:600}
+.rule-card .meta{font-size:12px;color:#8b949e;margin-top:4px}
+.sev-critical{color:#f85149}.sev-high{color:#db6d28}.sev-medium{color:#d29922}.sev-low{color:#3fb950}
+</style>
+</head>
+<body>
+<div class="header"><div class="status"></div><h1>🛡️ AFP Dashboard</h1></div>
+<div class="stats" id="stats"></div>
+<h2>Event Log</h2>
+<table><thead><tr><th>Time</th><th>Action</th><th>Target</th><th>Status</th><th>Rule</th><th>Reason</th></tr></thead><tbody id="events"></tbody></table>
+<h2>Loaded Rules</h2>
+<div id="rules"></div>
+<script>
+async function refresh(){
+  try{
+    const[stats,events,rules]=await Promise.all([
+      fetch('/api/stats').then(r=>r.json()),
+      fetch('/api/events').then(r=>r.json()),
+      fetch('/api/rules').then(r=>r.json())
+    ]);
+    document.getElementById('stats').innerHTML=`
+      <div class="stat"><div class="num">${stats.total||0}</div><div class="label">Total Requests</div></div>
+      <div class="stat blocked"><div class="num">${stats.blocked||0}</div><div class="label">Blocked</div></div>
+      <div class="stat allowed"><div class="num">${stats.allowed||0}</div><div class="label">Allowed</div></div>
+      <div class="stat"><div class="num">${rules.length||0}</div><div class="label">Rules Loaded</div></div>`;
+    const tbody=document.getElementById('events');
+    tbody.innerHTML=events.map(e=>{
+      const t=new Date(e.timestamp).toLocaleTimeString();
+      const st=e.allowed?'<span class="ok">✅</span>':'<span class="blocked">❌</span>';
+      return `<tr><td>${t}</td><td>${e.action}</td><td>${e.target}</td><td>${st}</td><td>${e.rule_name||'—'}</td><td>${e.reason||'—'}</td></tr>`;
+    }).join('');
+    const rc=document.getElementById('rules');
+    rc.innerHTML=rules.map(r=>`<div class="rule-card"><div class="name">${r.name}</div><div class="meta"><span class="sev-${r.severity}">${r.severity}</span> · ${r.category} · ${r.id}</div><div class="meta">${r.description||''}</div></div>`).join('');
+  }catch(e){}
+}
+refresh();setInterval(refresh,2000);
+</script>
+</body>
+</html>
