@@ -30,6 +30,11 @@ class AFPProxyHandler(BaseHTTPRequestHandler):
         content_len = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(content_len) if content_len else b""
 
+        # If no firewall loaded, allow all traffic through
+        if firewall is None:
+            self._forward(url, body)
+            return
+
         # Build params for AFP check
         params = {"url": url, "body": body.decode("utf-8", errors="replace")}
         result = firewall.check(action="http_request", params=params)
@@ -62,6 +67,10 @@ class AFPProxyHandler(BaseHTTPRequestHandler):
             return
 
         # Forward the request
+        self._forward(url, body)
+
+    def _forward(self, url, body):
+        """Forward request to upstream server."""
         try:
             fwd_headers = {k: v for k, v in self.headers.items()
                            if k.lower() not in ("host", "proxy-connection")}
@@ -101,27 +110,29 @@ class AFPProxyHandler(BaseHTTPRequestHandler):
         host = host_port[0]
         port = int(host_port[1]) if len(host_port) > 1 else 443
 
-        # Check domain against rules
-        params = {"url": f"https://{host}", "body": ""}
-        result = firewall.check(action="http_request", params=params)
+        # If no firewall loaded, tunnel directly
+        if firewall is not None:
+            # Check domain against rules
+            params = {"url": f"https://{host}", "body": ""}
+            result = firewall.check(action="http_request", params=params)
 
-        event = AFPEvent(
-            timestamp=AFPLogger.now(),
-            action="https_connect",
-            target=self.path,
-            allowed=result.allowed,
-            rule_id=result.rule_id,
-            rule_name=result.rule_name,
-            reason=result.reason,
-            severity=result.severity,
-        )
-        if logger:
-            logger.log(event)
+            event = AFPEvent(
+                timestamp=AFPLogger.now(),
+                action="https_connect",
+                target=self.path,
+                allowed=result.allowed,
+                rule_id=result.rule_id,
+                rule_name=result.rule_name,
+                reason=result.reason,
+                severity=result.severity,
+            )
+            if logger:
+                logger.log(event)
 
-        if not result.allowed:
-            self.send_response(403)
-            self.end_headers()
-            return
+            if not result.allowed:
+                self.send_response(403)
+                self.end_headers()
+                return
 
         # Tunnel through
         try:

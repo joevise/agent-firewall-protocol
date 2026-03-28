@@ -65,7 +65,7 @@ class AFPDesktopApp:
         try:
             from afp.firewall import AgentFirewall
             self.firewall = AgentFirewall()
-            self.rule_count = len(getattr(self.firewall, 'rules', []))
+            self.rule_count = len(getattr(self.firewall, '_rules', []))
             logger.info('Loaded %d AFP rules', self.rule_count)
         except Exception as e:
             logger.warning('Could not load AFP SDK rules: %s', e)
@@ -76,12 +76,17 @@ class AFPDesktopApp:
 
     def _run_proxy(self):
         try:
-            from daemon.proxy import start_proxy
+            import daemon.proxy as proxy_mod
+            from daemon.logger import AFPLogger as DaemonLogger
+            # Wire up firewall and logger to daemon proxy module
+            proxy_mod.firewall = self.firewall
+            proxy_mod.logger = DaemonLogger(max_events=1000)
+            self._daemon_logger = proxy_mod.logger
             logger.info('Starting AFP proxy on port %d', self.config.proxy_port)
             self.proxy_running = True
-            start_proxy(port=self.config.proxy_port)
-        except ImportError:
-            logger.warning('daemon.proxy not available — running stub proxy')
+            proxy_mod.start_proxy(port=self.config.proxy_port)
+        except ImportError as e:
+            logger.warning('daemon.proxy not available — running stub proxy: %s', e)
             self.proxy_running = True
             self._stop_event.wait()  # Block until stop
         except Exception as e:
@@ -97,12 +102,15 @@ class AFPDesktopApp:
 
     def _run_dashboard(self):
         try:
-            from daemon.dashboard import start_dashboard
+            import daemon.dashboard as dash_mod
+            # Wire up firewall and logger to daemon dashboard module
+            dash_mod.firewall = self.firewall
+            dash_mod.logger = getattr(self, '_daemon_logger', None)
             logger.info('Starting AFP dashboard on port %d', self.config.dashboard_port)
             self.dashboard_running = True
-            start_dashboard(port=self.config.dashboard_port)
-        except ImportError:
-            logger.warning('daemon.dashboard not available — dashboard disabled')
+            dash_mod.start_dashboard(port=self.config.dashboard_port)
+        except ImportError as e:
+            logger.warning('daemon.dashboard not available — dashboard disabled: %s', e)
             self.dashboard_running = True
             self._stop_event.wait()
         except Exception as e:
