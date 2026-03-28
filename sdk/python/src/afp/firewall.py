@@ -3,7 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from .models import Rule, CheckResult
-from .rules import RuleEngine, load_rules_from_yaml, load_rules_from_dir
+from .rules import (
+    RuleEngine, load_rules_from_yaml, load_rules_from_dir,
+    RemoteRuleLoader, AFP_REMOTE_RULES_URL, AFP_COMMUNITY_RULES_URL,
+)
 
 
 _CORE_RULES_DIR = Path(__file__).resolve().parents[4] / "rules" / "core"
@@ -14,7 +17,7 @@ class AgentFirewall:
 
     def __init__(
         self,
-        rules: str = "core",
+        rules: str | list[Rule] = "core",
         rules_dir: str | None = None,
         custom_rules: list[Rule] | None = None,
         allowed_domains: list[str] | None = None,
@@ -22,9 +25,24 @@ class AgentFirewall:
         self._rules: list[Rule] = []
         self._engine = RuleEngine(allowed_domains=allowed_domains)
 
-        if rules == "core" and rules_dir is None:
+        if isinstance(rules, list):
+            self._rules.extend(rules)
+        elif rules == "core" and rules_dir is None:
             if _CORE_RULES_DIR.exists():
                 self._rules.extend(load_rules_from_dir(_CORE_RULES_DIR))
+        elif rules == "community":
+            loader = RemoteRuleLoader(AFP_REMOTE_RULES_URL)
+            self._rules.extend(loader.load())
+        elif isinstance(rules, str) and rules.startswith("http"):
+            loader = RemoteRuleLoader(rules)
+            self._rules.extend(loader.load())
+        elif isinstance(rules, str) and rules not in ("core",):
+            # Treat as local file path
+            p = Path(rules)
+            if p.is_dir():
+                self._rules.extend(load_rules_from_dir(p))
+            elif p.exists():
+                self._rules.extend(load_rules_from_yaml(p))
         elif rules_dir:
             self._rules.extend(load_rules_from_dir(rules_dir))
 

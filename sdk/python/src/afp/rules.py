@@ -1,14 +1,114 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import time
 import threading
 from pathlib import Path
 from urllib.parse import urlparse
+from urllib.request import urlopen, Request
+from urllib.error import URLError
 
 import yaml
 
 from .models import Rule
 from .patterns import matches
+
+
+AFP_REMOTE_RULES_URL = "https://raw.githubusercontent.com/joevise/agent-firewall-protocol/main/rules/core/default-rules.yaml"
+AFP_COMMUNITY_RULES_URL = "https://raw.githubusercontent.com/joevise/agent-firewall-protocol/main/rules/community/"
+
+
+class RemoteRuleLoader:
+    """Load rules from a remote URL with local caching."""
+
+    def __init__(self, url: str, cache_dir: str | None = None, cache_ttl: int = 3600):
+        self.url = url
+        self.cache_dir = Path(cache_dir) if cache_dir else Path.home() / ".afp" / "cache"
+        self.cache_ttl = cache_ttl
+
+    def _cache_path(self) -> Path:
+        h = hashlib.sha256(self.url.encode()).hexdigest()[:16]
+        return self.cache_dir / f"{h}.yaml"
+
+    def _meta_path(self) -> Path:
+        return self._cache_path().with_suffix(".meta")
+
+    def _is_cache_valid(self) -> bool:
+        meta = self._meta_path()
+        if not meta.exists() or not self._cache_path().exists():
+            return False
+        try:
+            data = json.loads(meta.read_text())
+            return (time.time() - data.get("fetched_at", 0)) < self.cache_ttl
+        except Exception:
+            return False
+
+    def _fetch_remote(self) -> str | None:
+        try:
+            req = Request(self.url, headers={"User-Agent": "AFP-SDK/0.1"})
+            with urlopen(req, timeout=15) as resp:
+                return resp.read().decode("utf-8")
+        except (URLError, OSError, Exception):
+            return None
+
+    def _save_cache(self, content: str) -> None:
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self._cache_path().write_text(content)
+        self._meta_path().write_text(json.dumps({"fetched_at": time.time(), "url": self.url}))
+
+    def _load_cached(self) -> str | None:
+        p = self._cache_path()
+        return p.read_text() if p.exists() else None
+
+    def load(self) -> list[Rule]:
+        """Fetch rules from remote, with local cache fallback."""
+        if self._is_cache_valid():
+            content = self._load_cached()
+            if content:
+                return _parse_rules_yaml(content)
+
+        content = self._fetch_remote()
+        if content:
+            self._save_cache(content)
+            return _parse_rules_yaml(content)
+
+        # Stale cache fallback
+        content = self._load_cached()
+        if content:
+            return _parse_rules_yaml(content)
+        return []
+
+    def update(self) -> bool:
+        """Force update from remote, return True if rules changed."""
+        old = self._load_cached()
+        content = self._fetch_remote()
+        if content is None:
+            return False
+        self._save_cache(content)
+        return content != old
+
+
+def _parse_rules_yaml(content: str) -> list[Rule]:
+    """Parse YAML string into Rule list."""
+    rules: list[Rule] = []
+    for doc in yaml.safe_load_all(content):
+        if not doc or "rule" not in doc:
+            continue
+        r = doc["rule"]
+        trigger = r.get("trigger", {})
+        rules.append(Rule(
+            id=r["id"],
+            name=r["name"],
+            description=r.get("description", ""),
+            category=r.get("category", ""),
+            severity=r.get("severity", "medium"),
+            trigger_actions=trigger.get("action_type", []),
+            conditions=r.get("conditions", {}),
+            action=r.get("action", "block"),
+            message=r.get("message", ""),
+        ))
+    return rules
 
 
 def load_rules_from_yaml(path: str | Path) -> list[Rule]:
