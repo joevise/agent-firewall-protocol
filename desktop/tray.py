@@ -41,13 +41,13 @@ class AFPTray:
         self.app = app
         self.icon = None
 
-    def _status_text(self) -> str:
+    def _status_text(self, item=None) -> str:
         return '🛡️ AFP Running' if self.app.proxy_running else '⏸️ AFP Stopped'
 
-    def _agents_text(self) -> str:
+    def _agents_text(self, item=None) -> str:
         return f'Agents: {len(self.app.agents_detected)}'
 
-    def _rules_text(self) -> str:
+    def _rules_text(self, item=None) -> str:
         return f'Rules: {self.app.rule_count}'
 
     def _build_agent_submenu(self):

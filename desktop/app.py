@@ -12,9 +12,17 @@ import threading
 import time
 
 # Add project root to path so we can import daemon and SDK
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-sys.path.insert(0, PROJECT_ROOT)
-sys.path.insert(0, os.path.join(PROJECT_ROOT, 'sdk', 'python', 'src'))
+# Handle both development mode and PyInstaller bundle
+if getattr(sys, 'frozen', False):
+    # Running as PyInstaller bundle
+    BUNDLE_DIR = sys._MEIPASS
+    sys.path.insert(0, BUNDLE_DIR)
+else:
+    # Running from source
+    PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+    sys.path.insert(0, PROJECT_ROOT)
+    sys.path.insert(0, os.path.join(PROJECT_ROOT, 'sdk', 'python', 'src'))
+    sys.path.insert(0, os.path.dirname(__file__))
 
 from config import AFPConfig
 from agent_scanner import AgentScanner

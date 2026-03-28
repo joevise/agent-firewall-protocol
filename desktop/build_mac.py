@@ -20,8 +20,16 @@ def build():
         '--windowed',
         f'--add-data={os.path.join(root, "sdk", "python", "src", "afp")}:afp',
         f'--add-data={os.path.join(root, "daemon")}:daemon',
+        f'--add-data={os.path.join(here, "tray.py")}:.',
+        f'--add-data={os.path.join(here, "agent_scanner.py")}:.',
+        f'--add-data={os.path.join(here, "proxy_manager.py")}:.',
+        f'--add-data={os.path.join(here, "config.py")}:.',
         '--hidden-import=pystray',
         '--hidden-import=PIL',
+        '--hidden-import=yaml',
+        '--hidden-import=pystray._darwin',
+        '--collect-all=pystray',
+        '--collect-all=yaml',
         '--osx-bundle-identifier=com.agentfirewall.afp',
     ]
 
