@@ -21,26 +21,28 @@ def build():
         '--name=AFP',
         '--onefile',
         '--windowed',
-        # Add source directories to Python path so PyInstaller collects them as modules
+        # Add project root so 'daemon' package is importable as 'daemon.proxy' etc.
+        # Add daemon dir so bare 'from logger import ...' inside daemon/ works
+        f'--paths={root}',
         f'--paths={daemon_dir}',
         f'--paths={sdk_dir}',
         f'--paths={here}',
-        # Data files
+        # Collect daemon package as additional source files for analysis
+        f'--collect-submodules=daemon',
+        # Data files (dashboard HTML)
         f'--add-data={os.path.join(daemon_dir, "static")}:daemon/static',
-        # Hidden imports — daemon modules use bare imports (from logger import ...)
-        '--hidden-import=daemon',
-        '--hidden-import=daemon.proxy',
-        '--hidden-import=daemon.dashboard',
-        '--hidden-import=daemon.logger',
+        # Hidden imports for modules PyInstaller can't trace from app.py
+        '--hidden-import=proxy',
+        '--hidden-import=dashboard',
         '--hidden-import=logger',
-        '--hidden-import=pystray',
-        '--hidden-import=PIL',
-        '--hidden-import=yaml',
-        '--hidden-import=pystray._darwin',
         '--hidden-import=config',
         '--hidden-import=agent_scanner',
         '--hidden-import=proxy_manager',
         '--hidden-import=tray',
+        '--hidden-import=pystray',
+        '--hidden-import=PIL',
+        '--hidden-import=yaml',
+        '--hidden-import=pystray._darwin',
         '--collect-all=pystray',
         '--collect-all=yaml',
         '--osx-bundle-identifier=com.agentfirewall.afp',
