@@ -85,6 +85,8 @@ class AFPDesktopApp:
             proxy_mod.logger = DaemonLogger(max_events=1000)
             self._daemon_logger = proxy_mod.logger
             logger.info('Starting AFP proxy on port %d', self.config.proxy_port)
+            # Kill any stale process on this port
+            self._kill_port(self.config.proxy_port)
             self._proxy_server = proxy_mod.start_proxy(port=self.config.proxy_port)
             # Verify it's actually listening
             self._wait_for_port(self.config.proxy_port, timeout=5)
@@ -107,6 +109,34 @@ class AFPDesktopApp:
                 time.sleep(0.1)
         raise RuntimeError(f'Port {port} not listening after {timeout}s')
 
+    @staticmethod
+    def _kill_port(port: int):
+        """Kill any process occupying the given port."""
+        import subprocess
+        try:
+            # Find PIDs listening on this port
+            result = subprocess.run(
+                ['lsof', '-ti', f':{port}'],
+                capture_output=True, text=True, timeout=5
+            )
+            pids = result.stdout.strip().split('\n')
+            my_pid = str(os.getpid())
+            for pid in pids:
+                pid = pid.strip()
+                if pid and pid != my_pid:
+                    logger.info('Killing process %s on port %d', pid, port)
+                    try:
+                        os.kill(int(pid), signal.SIGTERM)
+                    except (ProcessLookupError, ValueError):
+                        pass
+            if any(p.strip() and p.strip() != my_pid for p in pids):
+                time.sleep(0.5)  # Give processes time to exit
+        except FileNotFoundError:
+            # lsof not available, try with fuser or just skip
+            pass
+        except Exception as e:
+            logger.warning('Could not kill process on port %d: %s', port, e)
+
     # ── Dashboard server ──
 
     def _start_dashboard(self):
@@ -116,6 +146,8 @@ class AFPDesktopApp:
             dash_mod.firewall = self.firewall
             dash_mod.logger = getattr(self, '_daemon_logger', None)
             logger.info('Starting AFP dashboard on port %d', self.config.dashboard_port)
+            # Kill any stale process on this port
+            self._kill_port(self.config.dashboard_port)
             self._dashboard_server = dash_mod.start_dashboard(port=self.config.dashboard_port)
             self._wait_for_port(self.config.dashboard_port, timeout=5)
             self.dashboard_running = True
