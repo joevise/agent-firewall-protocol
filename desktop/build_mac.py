@@ -59,7 +59,30 @@ def build():
 
     print(f'Building AFP Desktop for macOS...')
     PyInstaller.__main__.run(args)
+
+    # Post-build: patch Info.plist for proper tray icon support
+    plist_path = os.path.join(here, 'dist', 'AFP.app', 'Contents', 'Info.plist')
+    if os.path.exists(plist_path):
+        _patch_info_plist(plist_path)
+
     print('Build complete! Run with: open dist/AFP.app')
+
+
+def _patch_info_plist(plist_path: str):
+    """Patch Info.plist for macOS system tray app behavior."""
+    import plistlib
+    with open(plist_path, 'rb') as f:
+        plist = plistlib.load(f)
+
+    # LSUIElement=True: run as agent (no Dock icon, allows tray icon)
+    plist['LSUIElement'] = True
+    # NSPrincipalClass: required for AppKit event loop (pystray needs this)
+    plist['NSPrincipalClass'] = 'NSApplication'
+
+    with open(plist_path, 'wb') as f:
+        plistlib.dump(plist, f)
+
+    print(f'Patched Info.plist: LSUIElement=True, NSPrincipalClass=NSApplication')
 
 
 if __name__ == '__main__':

@@ -97,4 +97,6 @@ class AFPTray:
         image = _create_icon_image()
         self.icon = Icon('AFP', image, 'Agent Firewall Protocol', menu=self.create_menu())
         logger.info('Starting system tray icon')
-        self.icon.run()
+        # Use setup callback to ensure icon is visible after run loop starts
+        # This is required on macOS where the AppKit runloop must be active first
+        self.icon.run(setup=lambda icon: setattr(icon, 'visible', True))
