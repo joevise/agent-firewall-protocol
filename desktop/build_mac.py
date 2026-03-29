@@ -19,8 +19,9 @@ def build():
     args = [
         os.path.join(here, 'app.py'),
         '--name=AFP',
-        '--onefile',
+        '--onedir',
         '--windowed',
+        '--noconfirm',
         # Add project root so 'daemon' package is importable as 'daemon.proxy' etc.
         # Add daemon dir so bare 'from logger import ...' inside daemon/ works
         f'--paths={root}',
@@ -58,7 +59,7 @@ def build():
 
     print(f'Building AFP Desktop for macOS...')
     PyInstaller.__main__.run(args)
-    print('Build complete! Check dist/AFP')
+    print('Build complete! Run with: open dist/AFP.app')
 
 
 if __name__ == '__main__':
