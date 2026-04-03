@@ -9,7 +9,27 @@ from .rules import (
 )
 
 
-_CORE_RULES_DIR = Path(__file__).resolve().parents[4] / "rules" / "core"
+import sys as _sys
+
+def _find_core_rules_dir() -> Path:
+    """Find rules/core directory, handling both source and PyInstaller bundle."""
+    # 1. PyInstaller bundle: rules are at _MEIPASS/rules/core
+    if getattr(_sys, 'frozen', False):
+        bundle_dir = Path(_sys._MEIPASS)
+        candidate = bundle_dir / "rules" / "core"
+        if candidate.exists():
+            return candidate
+
+    # 2. Source mode: relative to this file (sdk/python/src/afp/firewall.py → project root)
+    candidate = Path(__file__).resolve().parents[4] / "rules" / "core"
+    if candidate.exists():
+        return candidate
+
+    # 3. Fallback: ~/.afp/rules/core (user-installed rules)
+    candidate = Path.home() / ".afp" / "rules" / "core"
+    return candidate
+
+_CORE_RULES_DIR = _find_core_rules_dir()
 
 
 class AgentFirewall:

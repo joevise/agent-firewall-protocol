@@ -59,6 +59,24 @@ class AFPTray:
             items.append(MenuItem('No agents detected', None, enabled=False))
         return Menu(*items)
 
+    def _proxy_toggle_text(self, item=None) -> str:
+        if self.app.proxy_manager.is_enabled():
+            return '✅ System Proxy: ON'
+        else:
+            return '⬜ System Proxy: OFF'
+
+    def toggle_system_proxy(self, icon=None, item=None):
+        """Toggle system-level proxy on/off."""
+        if self.app.proxy_manager.is_enabled():
+            logger.info('Disabling system proxy')
+            self.app.proxy_manager.disable()
+        else:
+            if self.app.proxy_running:
+                logger.info('Enabling system proxy')
+                self.app.proxy_manager.enable()
+            else:
+                logger.warning('Cannot enable system proxy: AFP proxy not running')
+
     def create_menu(self) -> 'Menu':
         return Menu(
             MenuItem(self._status_text, None, enabled=False),
@@ -66,6 +84,7 @@ class AFPTray:
             MenuItem(self._rules_text, None, enabled=False),
             Menu.SEPARATOR,
             MenuItem('Open Dashboard', self.open_dashboard),
+            MenuItem(self._proxy_toggle_text, self.toggle_system_proxy),
             MenuItem('Update Rules', self.update_rules),
             Menu.SEPARATOR,
             MenuItem('Detected Agents', self._build_agent_submenu()),
