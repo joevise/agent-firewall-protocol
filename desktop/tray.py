@@ -13,24 +13,52 @@ except ImportError:
     HAS_TRAY = False
 
 
-def _create_icon_image(size: int = 64) -> 'Image.Image':
-    """Create a simple shield icon programmatically."""
+def _create_icon_image(size: int = 22) -> 'Image.Image':
+    """Create a menu bar icon optimized for macOS.
+    
+    macOS menu bar icons should be:
+    - 22x22 points (44x44 pixels for Retina @2x)
+    - Black/white with alpha for proper template rendering
+    - Simple shapes that work at small sizes
+    """
+    import platform
+    
+    # Use 44x44 for Retina displays (macOS), 64 for others
+    if platform.system() == 'Darwin':
+        size = 44  # @2x for Retina
+    else:
+        size = 64
+    
     img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
-    # Shield shape
+    
+    # Shield shape — use solid black for macOS template compatibility
     cx, cy = size // 2, size // 2
+    margin = max(2, size // 16)
     points = [
-        (cx, 4),          # top center
-        (size - 6, 14),   # top right
-        (size - 8, cy + 8),  # mid right
-        (cx, size - 4),   # bottom center
-        (8, cy + 8),      # mid left
-        (6, 14),          # top left
+        (cx, margin),                          # top center
+        (size - margin * 2, margin + size // 6),  # top right
+        (size - margin * 2 - size // 16, cy + size // 6),  # mid right
+        (cx, size - margin),                   # bottom center
+        (margin * 2 + size // 16, cy + size // 6),  # mid left
+        (margin * 2, margin + size // 6),      # top left
     ]
-    draw.polygon(points, fill=(34, 139, 230, 255))  # Blue shield
-    # Inner highlight
-    inner = [(p[0] * 0.8 + cx * 0.2, p[1] * 0.8 + cy * 0.2) for p in points]
-    draw.polygon(inner, fill=(59, 170, 255, 180))
+    
+    if platform.system() == 'Darwin':
+        # macOS: black icon with alpha — system handles light/dark mode
+        draw.polygon(points, fill=(0, 0, 0, 220))
+        # Inner cutout for visual depth
+        inner = [(p[0] * 0.75 + cx * 0.25, p[1] * 0.75 + cy * 0.25) for p in points]
+        draw.polygon(inner, fill=(0, 0, 0, 0))  # Transparent inner
+        # Small shield dot in center
+        r = max(2, size // 10)
+        draw.ellipse([cx - r, cy - r + size // 12, cx + r, cy + r + size // 12], fill=(0, 0, 0, 220))
+    else:
+        # Other platforms: colored icon
+        draw.polygon(points, fill=(34, 139, 230, 255))
+        inner = [(p[0] * 0.8 + cx * 0.2, p[1] * 0.8 + cy * 0.2) for p in points]
+        draw.polygon(inner, fill=(59, 170, 255, 180))
+    
     return img
 
 
@@ -116,6 +144,19 @@ class AFPTray:
         image = _create_icon_image()
         self.icon = Icon('AFP', image, 'Agent Firewall Protocol', menu=self.create_menu())
         logger.info('Starting system tray icon')
-        # Use setup callback to ensure icon is visible after run loop starts
-        # This is required on macOS where the AppKit runloop must be active first
-        self.icon.run(setup=lambda icon: setattr(icon, 'visible', True))
+
+        def on_setup(icon):
+            icon.visible = True
+            # macOS: set template mode so icon adapts to light/dark mode
+            # and renders correctly on all displays including built-in
+            try:
+                import platform
+                if platform.system() == 'Darwin' and hasattr(icon, '_status_item'):
+                    ns_image = icon._status_item.button().image()
+                    if ns_image:
+                        ns_image.setTemplate_(True)
+                        logger.info('Set macOS template icon mode')
+            except Exception as e:
+                logger.debug('Could not set template icon: %s', e)
+
+        self.icon.run(setup=on_setup)
